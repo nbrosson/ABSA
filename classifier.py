@@ -16,8 +16,8 @@ from sklearn import svm
 
 # Open the data: We have the polarity, the aspect term, the aspect category (AMBIENCE#GENERAL)
 # and the review
-train_set = pd.read_csv('/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/NLP/Assignments/2/exercise2/data/traindata.csv', sep='\t', header= None)
-dev_set = pd.read_csv('/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/NLP/Assignments/2/exercise2/data/devdata.csv', sep='\t', header= None)
+train_set = pd.read_csv('/data/traindata.csv', sep='\t', header= None)
+dev_set = pd.read_csv('/data/devdata.csv', sep='\t', header= None)
 
 
 #### Data cleaning Functions ###
