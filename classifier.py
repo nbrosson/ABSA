@@ -9,10 +9,12 @@ from keras.layers import Add
 from keras.utils import to_categorical
 import keras.backend as K
 from keras.preprocessing.text import one_hot
+from keras import regularizers
 from keras.preprocessing.sequence import pad_sequences
+from keras.optimizers import Adam
 from keras.models import Sequential
 from keras.layers import Embedding, Dropout, LSTM, Dense, Activation , Conv1D, MaxPooling1D, Bidirectional, Reshape, Flatten
-from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.text import Tokenizer, text_to_word_sequence
 from keras.models import Model
 from keras.layers import Concatenate, Input, Dense
 from sklearn import preprocessing
@@ -22,8 +24,8 @@ from sklearn import svm
 
 # Open the data: We have the polarity, the aspect term, the aspect category (AMBIENCE#GENERAL)
 # and the review
-train_set = pd.read_csv('/Users/.../traindata.csv', sep='\t', header= None)
-dev_set = pd.read_csv('/Users/.../devdata.csv', sep='\t', header= None)
+train_set = pd.read_csv('/Users/.../data/traindata.csv', sep='\t', header= None)
+dev_set = pd.read_csv('/Users/.../data/devdata.csv', sep='\t', header= None)
 
 
 #### Data cleaning Functions ###
@@ -60,16 +62,19 @@ def sentence_modifications(df, colnum):
     nlp = spacy.load('en')
     
     cleaned_reviews = []
-    
     # We want to remove stop words and punctuation:
     for doc in nlp.pipe(df[colnum].astype('unicode').values):
         if doc.is_parsed:
             cleaned_reviews.append(' '.join([tok.lemma_ for tok in doc if (not tok.is_stop and not tok.is_punct)])) 
+            
         else:
             # We don't want an element of the list to be empty
-            cleaned_reviews.append('')    
+            cleaned_reviews.append('') 
+            
     df[colnum] = cleaned_reviews
 
+
+    print("Sentence modifications done ")
 
 def prepare_for_encoding(documents, number_of_words):
     """ We want to prepare the reviews to be prepared for embedding"""
@@ -79,6 +84,7 @@ def prepare_for_encoding(documents, number_of_words):
     padded_docs = pad_sequences(encoded_docs, maxlen=max_length, padding='post')
     print("Reviews prepared for beeing embedded ! Shape: ")
     print(padded_docs.shape)
+    
     return padded_docs
 
 
@@ -95,6 +101,10 @@ class Classifier:
         
         # First, we will clean the training set:
         train_set = pd.read_csv(trainfile, sep='\t', header= None)
+        # To download the dataset below, :
+        # https://www.kaggle.com/c/restaurant-reviews/data
+        reviews_training = pd.read_csv('/Users/.../restaurant-train.csv', sep='\t', header= None)
+        reviews_training = pd.concat([train_set[4],reviews_training[1]], axis = 0)
         
         # Do the cleaning: Lower cases, no stop word, no punctuation:
         aspect_term(train_set, 2)
@@ -102,12 +112,12 @@ class Classifier:
         
         # First, we create a tokenizer:
         voc_size = 7000
-        tokenizer = Tokenizer(num_words=voc_size)
+        tokenizer = Tokenizer(num_words = voc_size, filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n', lower=True, split=' ', char_level=False, oov_token=None, document_count=0)
         # Give the list of texts to train our tokenizer
-        tokenizer.fit_on_texts(train_set[4])
+        tokenizer.fit_on_texts(reviews_training)
         
         # Then, we save the existing tokenizer to apply it on new data.
-        with open('tokenizer.pickle', 'wb') as handle:
+        with open('tokenizer.pickle2', 'wb') as handle:
             	pickle.dump(tokenizer, handle)
 
         
@@ -133,9 +143,9 @@ class Classifier:
         
         # Time to build the model:
         
-        #############################################################################
+        ############################  1st model ########################################
         
-        #We will try to merge two different models: Accuracy: 79.79 
+        #We will try to merge two different models: Accuracy: 80.32 
         left_branch = Input((7000, ))
         left_branch_dense = Dense(512, activation = 'relu')(left_branch)
         
@@ -143,8 +153,9 @@ class Classifier:
         right_branch_dense = Dense(512, activation = 'relu')(right_branch)
         merged = Concatenate()([left_branch_dense, right_branch_dense])
         output_layer = Dense(3, activation = 'softmax')(merged)
-        
+      
         model = Model(inputs=[left_branch, right_branch], outputs=output_layer)
+        #optim = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-8)
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         model.fit([np.array(review_matrix), np.array(X_train)], labels,epochs=2, verbose=1)
         model.save('model.merged') 
@@ -152,37 +163,7 @@ class Classifier:
         #############################################################################
         
         
-        #############################################################################
-
-        #We will try to merge two different models in a different way: Accuracy: 70
         
-        # Prepare the review column for embedding: 
-        review_matrix_for_embedding = prepare_for_encoding(train_set[4].tolist(), 7000) # Shape: (1503,100)
-        
-        
-        second_matrix = np.array(pd.concat([onehot_category, aspect_matrix],axis=1))
-                
-        
-        left_branch = Input(shape=(100,), dtype='int32')
-        # input_dim: Size of maximum integer (7001 here); output dim: Size of embedded vector; 
-        # input_length: Size of the array
-        left_branch_embedding = Embedding(7000, 300, input_length=100)(left_branch)
-        lstm_out = LSTM(256)(left_branch_embedding)
-        lstm_out = Dropout(0.7)(lstm_out)
-        lstm_out = Dense(128, activation='relu')(lstm_out)
-        
-        right_branch = Input((7012, ))
-        merged = Concatenate()([lstm_out, right_branch])
-        output_layer = Dense(3, activation = 'softmax')(merged)
-        
-        model = Model(inputs=[left_branch, right_branch], outputs=output_layer)
-        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-        model.fit([review_matrix_for_embedding, second_matrix], labels,epochs=5, verbose=1)
-        model.save('model.merged2') # 79.79 accuracy
-
-
-        #############################################################################
-
 
 
         #############################################################################
@@ -206,7 +187,7 @@ class Classifier:
         
         #############################################################################
         
-        # First, we build the training set and the label column: Accuracy: 78.72
+        # Classic NN: Accuracy: 78.72
         
         
         model = Sequential()
@@ -227,6 +208,31 @@ class Classifier:
         
         #############################################################################
 
+
+
+
+        ############################  Last model ########################################
+        
+        #Accuracy: 79 
+#        second_matrix = np.array(pd.concat([onehot_category, aspect_matrix],axis=1))
+#        
+#        left_branch = Input((7000, ))
+#        left_branch_dense = Dense(512, activation = 'relu')(left_branch)
+#        
+#        right_branch = Input((7012, ))
+#        right_branch_dense = Dense(512, activation = 'relu')(right_branch)
+#        merged = Concatenate()([left_branch_dense, right_branch_dense])
+#        output_layer = Dense(3, activation = 'softmax')(merged)
+#        
+#        model = Model(inputs=[left_branch, right_branch], outputs=output_layer)
+#        #optim = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-8)
+#        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+#        model.fit([np.array(review_matrix), second_matrix], labels,epochs=2, verbose=1)
+#        model.save('model.merged3')
+        
+        #################################################################################
+        
+        
         
         
         # At the end of the predict file, we will need to convert  int label
@@ -249,10 +255,10 @@ class Classifier:
         # Do the cleaning: Lower cases, no stop word, no punctuation:
         aspect_term(test_set, 2)
         sentence_modifications(test_set, 4)
-        sentence_for_embedding = prepare_for_encoding(test_set[4].tolist(), 7000) 
+        #sentence_for_embedding = prepare_for_encoding(test_set[4].tolist(), 7000) 
 
         # Apply tokenizer on new data
-        with open('tokenizer.pickle', 'rb') as handle:
+        with open('tokenizer.pickle2', 'rb') as handle:
             	tokenizer = pickle.load(handle)
         
         # Define the BoW vectors using the same matrix
@@ -270,7 +276,7 @@ class Classifier:
         
         #clf2 = pickle.loads(svm_model)
         #predictions = clf2.predict(X_train)
-        merged_model = load_model('model.merged2')
+        merged_model = load_model('model.merged')
         #predictions = merged_model.predict_classes([np.array(X_train.iloc[:,7012:14012]),np.array(X_train)],)
         
         # Simple sequential model without LSTM
@@ -278,10 +284,13 @@ class Classifier:
         
         
         # For functional model without LSTM
-        #predictions = merged_model.predict([np.array(X_train.iloc[:,7012:14012]),np.array(X_train)])
+        predictions = merged_model.predict([np.array(X_train.iloc[:,7012:14012]),np.array(X_train)])
+        
+        # For second functional model without LSTM
+        #predictions = merged_model.predict([np.array(X_train.iloc[:,7012:14012]),np.array(X_train.iloc[:,:7012])])
         
         # For functional model with LSTM
-        predictions = merged_model.predict([sentence_for_embedding,np.array(X_train.iloc[:,:7012])])
+        #predictions = merged_model.predict([np.array(X_train.iloc[:,7012:14012]),np.array(X_train.iloc[:,:7012])])
        
         
         predictions = predictions.argmax(axis=-1)  
@@ -301,3 +310,4 @@ class Classifier:
         
 # To run the code:
 # On the terminal, go to the folder and then => $ python tester.py
+   
