@@ -1,19 +1,18 @@
 import time
 import numpy as np
+import os 
+import random as rn
 
 from classifier import Classifier
 from eval import eval_file, eval_list, load_label_output
 
 def set_reproductible():
-    # The below is necessary to have reproducible behavior.
-    import random as rn
-    import os
+    """
+    Utils function to evaluate the model
+    """
+    
     os.environ['PYTHONHASHSEED'] = '0'
-    # The below is necessary for starting Numpy generated random numbers
-    # in a well-defined initial state.
     np.random.seed(17)
-    # The below is necessary for starting core Python generated random numbers
-    # in a well-defined state.
     rn.seed(12345)
 
 

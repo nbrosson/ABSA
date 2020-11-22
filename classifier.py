@@ -28,11 +28,6 @@ train_set = pd.read_csv('/Users/.../data/traindata.csv', sep='\t', header= None)
 dev_set = pd.read_csv('/Users/.../data/devdata.csv', sep='\t', header= None)
 
 
-#### Data cleaning Functions ###
-
-# As we want to do the data cleaning for every datasets (training, dev and test),
-# we will do data cleaning functions that we will put both in the train and the predict methods
-
 def aspect_term(df, colnum):
     """Only lower cases in the aspect term
     """
@@ -42,10 +37,6 @@ def aspect_term(df, colnum):
         lower_words.append(row[colnum].lower())
     df[colnum] = lower_words
     
-
-
-# To make the best out of our data, we will also study the entire sentences. 
-# Thus, we will clean it:
 
 def sentence_modifications(df, colnum):
     """Do some modifcations on the review to study it
@@ -88,14 +79,13 @@ def prepare_for_encoding(documents, number_of_words):
     return padded_docs
 
 
-#########################
-
-
 class Classifier:
-    """The Classifier"""
+    """
+    
+    The Classifier
+    
+    """
 
-
-    #############################################
     def train(self, trainfile):
         """Trains the classifier model on the training set stored in file trainfile"""
         
@@ -139,13 +129,8 @@ class Classifier:
         # Define predictors and dependant variable
         X_train = pd.concat([onehot_category, aspect_matrix, review_matrix], axis=1)
         labels = onehot_polarity
-        
-        
-        # Time to build the model:
-        
-        ############################  1st model ########################################
-        
-        #We will try to merge two different models: Accuracy: 80.32 
+                        
+        # Multi-headed NN 
         left_branch = Input((7000, ))
         left_branch_dense = Dense(512, activation = 'relu')(left_branch)
         
@@ -158,104 +143,23 @@ class Classifier:
         #optim = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-8)
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         model.fit([np.array(review_matrix), np.array(X_train)], labels,epochs=2, verbose=1)
+        # Store the model
         model.save('model.merged') 
         
-        #############################################################################
-        
-        
-        
-
-
-        #############################################################################
-
-        # Let's try a LSTM now, with different features
-        # Accuracy: 70%
-        #embed_dim = 128
-        #lstm_out = 200
-
-        #model = Sequential()
-        #model.add(Embedding(512, embed_dim,input_length = X_train.shape[1]))
-        #model.add(LSTM(lstm_out))
-        #model.add(Dense(3,activation='softmax'))
-        #model.compile(loss = 'categorical_crossentropy', optimizer='adam',metrics = ['accuracy'])
-        #print(model.summary())
-        #model.fit(X_train, labels, epochs=2, verbose=1)
-        #model.save('model.lstm')
-        
-        #############################################################################
-        
-        
-        #############################################################################
-        
-        # Classic NN: Accuracy: 78.72
-        
-        
-        model = Sequential()
-        # Input of size * x 14012 and output of size 512
-        model.add(Dense(512, input_shape=(14012,)))
-        # Relu activation function
-        model.add(Activation('relu'))
-        # Final output of size 3 (three posible polarities)
-        model.add(Dense(3))
-        model.add(Activation('softmax'))
-        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-        model.fit(X_train, labels, epochs=2, verbose=1)
-        model.save('model.simple') # 
-        
-        #clf = svm.SVC(gamma='scale')
-        #clf.fit(X_train, labels)
-        #svm_model = pickle.dumps(clf)
-        
-        #############################################################################
-
-
-
-
-        ############################  Last model ########################################
-        
-        #Accuracy: 79 
-#        second_matrix = np.array(pd.concat([onehot_category, aspect_matrix],axis=1))
-#        
-#        left_branch = Input((7000, ))
-#        left_branch_dense = Dense(512, activation = 'relu')(left_branch)
-#        
-#        right_branch = Input((7012, ))
-#        right_branch_dense = Dense(512, activation = 'relu')(right_branch)
-#        merged = Concatenate()([left_branch_dense, right_branch_dense])
-#        output_layer = Dense(3, activation = 'softmax')(merged)
-#        
-#        model = Model(inputs=[left_branch, right_branch], outputs=output_layer)
-#        #optim = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-8)
-#        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-#        model.fit([np.array(review_matrix), second_matrix], labels,epochs=2, verbose=1)
-#        model.save('model.merged3')
-        
-        #################################################################################
-        
-        
-        
-        
-        # At the end of the predict file, we will need to convert  int label
-        # to polarities (pos, neg, neutr),thus, we save the labels:
         # Save the fitted label encoder for prediction decoding
         with open('labels.pickle', 'wb') as handle:
             	pickle.dump(polarity_encoder, handle)
             
-            
-        
-
     def predict(self, datafile):
         """Predicts class labels for the input instances in file 'datafile'
         Returns the list of predicted labels
         """
         
-        # First, we will clean the test set:
         test_set = pd.read_csv(datafile, sep='\t', header= None)
 
         # Do the cleaning: Lower cases, no stop word, no punctuation:
         aspect_term(test_set, 2)
         sentence_modifications(test_set, 4)
-        #sentence_for_embedding = prepare_for_encoding(test_set[4].tolist(), 7000) 
 
         # Apply tokenizer on new data
         with open('tokenizer.pickle2', 'rb') as handle:
@@ -273,41 +177,12 @@ class Classifier:
         X_train = pd.concat([onehot_category, tokenized_aspects, tokenized_reviews], axis=1)
         
         # Load the model weights and architecture, predict for new data
-        
-        #clf2 = pickle.loads(svm_model)
-        #predictions = clf2.predict(X_train)
-        merged_model = load_model('model.merged')
-        #predictions = merged_model.predict_classes([np.array(X_train.iloc[:,7012:14012]),np.array(X_train)],)
-        
-        # Simple sequential model without LSTM
-        #predictions = merged_model.predict_classes(np.array(X_train),)
-        
-        
-        # For functional model without LSTM
+        merged_model = load_model('model.merged')        
         predictions = merged_model.predict([np.array(X_train.iloc[:,7012:14012]),np.array(X_train)])
-        
-        # For second functional model without LSTM
-        #predictions = merged_model.predict([np.array(X_train.iloc[:,7012:14012]),np.array(X_train.iloc[:,:7012])])
-        
-        # For functional model with LSTM
-        #predictions = merged_model.predict([np.array(X_train.iloc[:,7012:14012]),np.array(X_train.iloc[:,:7012])])
-       
-        
         predictions = predictions.argmax(axis=-1)  
-        #print(predictions)
-         # Inverse the labels transformation
+        
+        # Inverse the labels transformation
         with open('labels.pickle', 'rb') as handle:
             polarity_labels = pickle.load(handle)
         
-        
-        
         return polarity_labels.inverse_transform(predictions)
-        
-        
-        
-        
-        
-        
-# To run the code:
-# On the terminal, go to the folder and then => $ python tester.py
-   
